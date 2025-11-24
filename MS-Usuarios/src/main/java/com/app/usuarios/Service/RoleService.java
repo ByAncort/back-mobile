@@ -1,16 +1,14 @@
 package com.app.usuarios.Service;
 
-import com.app.usuarios.Dto.PermissionDto;
 import com.app.usuarios.Dto.RoleDto;
 import com.app.usuarios.Dto.ServiceResult;
-import com.app.usuarios.Model.Permission;
 import com.app.usuarios.Model.Role;
-import com.app.usuarios.Repository.PermissionRepository;
 import com.app.usuarios.Repository.RoleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -18,23 +16,19 @@ import java.util.stream.Collectors;
 public class RoleService {
 
     private final RoleRepository roleRepository;
-    private final PermissionRepository permissionRepository;
 
     public ServiceResult<Role> create(RoleDto request) {
         try {
             Optional<Role> find = roleRepository.findByName(request.getName());
             if(find.isPresent()){
-                new Exception("El rol ya esta Registrado");
+                // Corregido: Se debe retornar el error o lanzar la excepción,
+                // antes solo se instanciaba sin hacer nada.
+                return new ServiceResult<>(List.of("El rol ya está Registrado"));
             }
 
-            Set<Permission> permissions = request.getPermissions().stream()
-                    .map(dto -> permissionRepository.findByName(dto.getName())
-                            .orElseThrow(() -> new RuntimeException("Permission not found: " + dto.getName())))
-                    .collect(Collectors.toSet());
-
+            // Se eliminó la lógica de búsqueda y asignación de permissions
             Role create = Role.builder()
                     .name(request.getName())
-                    .permissions(permissions)
                     .build();
 
             Role saved = roleRepository.save(create);
@@ -44,6 +38,7 @@ public class RoleService {
             return new ServiceResult<>(List.of("An error occurred while creating the role: " + e.getMessage()));
         }
     }
+
     public ServiceResult<String> deleteById(Long id) {
         try {
             Optional<Role> role = roleRepository.findById(id);
@@ -57,37 +52,8 @@ public class RoleService {
             return new ServiceResult<>(List.of("Error deleting role: " + e.getMessage()));
         }
     }
-    public ServiceResult<Role> assignPermissionToRole(String RoleName, String permissionName) {
-        try {
-            Role role = roleRepository.findByName(RoleName)
-                    .orElseThrow(() -> new RuntimeException("Role not found with Name: " + RoleName));
 
-            Permission permission = permissionRepository.findByName(permissionName)
-                    .orElseThrow(() -> new RuntimeException("Permission not found: " + permissionName));
-
-            role.getPermissions().add(permission);
-            Role updated = roleRepository.save(role);
-            return new ServiceResult<>(updated);
-        } catch (Exception e) {
-            return new ServiceResult<>(List.of("Error assigning permission: " + e.getMessage()));
-        }
-    }
-
-    public ServiceResult<Role> removePermissionFromRole(String roleName, String permissionName) {
-        try {
-            Role role = roleRepository.findByName(roleName)
-                    .orElseThrow(() -> new RuntimeException("Role not found with Name: " + roleName));
-
-            Permission permission = permissionRepository.findByName(permissionName)
-                    .orElseThrow(() -> new RuntimeException("Permission not found: " + permissionName));
-
-            role.getPermissions().remove(permission);
-            Role updated = roleRepository.save(role);
-            return new ServiceResult<>(updated);
-        } catch (Exception e) {
-            return new ServiceResult<>(List.of("Error removing permission: " + e.getMessage()));
-        }
-    }
+    // Se eliminaron los métodos assignPermissionToRole y removePermissionFromRole
 
     public ServiceResult<List<RoleDto>> getAllRoles() {
         try {
@@ -95,13 +61,7 @@ public class RoleService {
                     .map(role -> RoleDto.builder()
                             .id(role.getId())
                             .name(role.getName())
-                            .permissions(
-                                    role.getPermissions().stream()
-                                            .map(permission -> PermissionDto.builder()
-                                                    .name(permission.getName())
-                                                    .build())
-                                            .collect(Collectors.toSet())
-                            )
+                            // Se eliminó el mapeo de permissions
                             .build())
                     .collect(Collectors.toList());
 
@@ -110,6 +70,4 @@ public class RoleService {
             return new ServiceResult<>(List.of("Error retrieving roles: " + e.getMessage()));
         }
     }
-
-
 }

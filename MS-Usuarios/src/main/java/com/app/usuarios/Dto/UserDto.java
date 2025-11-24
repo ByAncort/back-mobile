@@ -1,19 +1,16 @@
 package com.app.usuarios.Dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.util.Set;
 
 @Data
-@Builder
-@AllArgsConstructor
-@NoArgsConstructor
 public class UserDto {
-    private String username;
+    private String username; // Puede ser opcional si usas displayName
+    private String displayName;
     private String email;
-    private String password;
-    private Set<String> roles; 
+    private String phone;
+    private Double weight;
+    private Integer height;
+    private String photoUrl;
+    private Set<String> roles; // Nombres de roles
 }

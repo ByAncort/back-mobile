@@ -1,8 +1,9 @@
 package com.app.usuarios.Service;
+
 import com.app.usuarios.Controller.UserAlreadyExistsException;
 import com.app.usuarios.Dto.*;
 import com.app.usuarios.Model.Role;
-import com.app.usuarios.Model.*;
+import com.app.usuarios.Model.User;
 import com.app.usuarios.Repository.RoleRepository;
 import com.app.usuarios.Repository.UserRepository;
 import io.jsonwebtoken.JwtException;
@@ -10,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.hibernate.service.spi.ServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import javax.management.relation.RoleNotFoundException;
 import java.util.*;
 import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -26,7 +27,6 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
-
 
     public ServiceResult<List<UserResponseDto>> getAllUsers() {
         try {
@@ -45,16 +45,26 @@ public class UserService {
             User user = userRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("User not found with ID: " + id));
 
-            user.setUsername(userDto.getUsername());
-            user.setEmail(userDto.getEmail());
+            // Actualizar campos básicos de autenticación (si se permite)
+            if(userDto.getUsername() != null) user.setUsername(userDto.getUsername());
+            if(userDto.getEmail() != null) user.setEmail(userDto.getEmail());
 
+            // --- Actualizar campos del Perfil (Android) ---
+            user.setDisplayName(userDto.getDisplayName());
+            user.setPhone(userDto.getPhone());
+            user.setWeight(userDto.getWeight());
+            user.setHeight(userDto.getHeight());
+            user.setPhotoUrl(userDto.getPhotoUrl());
+            // ----------------------------------------------
 
-            Set<Role> roles = userDto.getRoles().stream()
-                    .map(name -> roleRepository.findByName(name)
-                            .orElseThrow(() -> new RuntimeException("Role not found: " + name)))
-                    .collect(Collectors.toSet());
-
-            user.setRoles(roles);
+            // Actualizar Roles si vienen en la petición
+            if (userDto.getRoles() != null && !userDto.getRoles().isEmpty()) {
+                Set<Role> roles = userDto.getRoles().stream()
+                        .map(name -> roleRepository.findByName(name)
+                                .orElseThrow(() -> new RuntimeException("Role not found: " + name)))
+                        .collect(Collectors.toSet());
+                user.setRoles(roles);
+            }
 
             User updated = userRepository.save(user);
             return new ServiceResult<>(toDto(updated));
@@ -68,7 +78,6 @@ public class UserService {
             if (!userRepository.existsById(id)) {
                 return new ServiceResult<>(List.of("User not found with ID: " + id));
             }
-
             userRepository.deleteById(id);
             return new ServiceResult<>("User deleted successfully.");
         } catch (Exception e) {
@@ -76,11 +85,17 @@ public class UserService {
         }
     }
 
+    // Convertir Entidad a DTO de respuesta
     public UserResponseDto toDto(User user) {
         return UserResponseDto.builder()
                 .id(user.getId())
                 .username(user.getUsername())
+                .displayName(user.getDisplayName()) // Mapear display name
                 .email(user.getEmail())
+                .phone(user.getPhone())            // Mapear teléfono
+                .weight(user.getWeight())          // Mapear peso
+                .height(user.getHeight())          // Mapear altura
+                .photoUrl(user.getPhotoUrl())      // Mapear foto
                 .roles(user.getRoles().stream().map(Role::getName).collect(Collectors.toSet()))
                 .build();
     }
@@ -89,9 +104,7 @@ public class UserService {
         Objects.requireNonNull(request, "RegisterRequest cannot be null");
         validateUserDoesNotExist(request.getUsername(), request.getEmail());
         try {
-            User savedUser = registerAndSaveUser(request);
-            return savedUser;
-
+            return registerAndSaveUser(request);
         } catch (JwtException e) {
             logger.error("JWT generation failed for user: {}", request.getUsername(), e);
             throw new ServiceException("Registration failed: could not generate access token", e);
@@ -105,26 +118,27 @@ public class UserService {
             throw new ServiceException("Registration failed due to unexpected error", e);
         }
     }
+
     private void validateUserDoesNotExist(String username, String email) {
         if (userRepository.existsByUsername(username)) {
             throw new UserAlreadyExistsException("Username already exists: " + username);
         }
-
         if (userRepository.existsByEmail(email)) {
             throw new UserAlreadyExistsException("Email already exists: " + email);
         }
     }
+
     private User registerAndSaveUser(RegisterRequest request) {
         User user = registerUser(request);
         return userRepository.save(user);
     }
+
     public User registerUser(RegisterRequest userRequest) {
-        
         if (userRequest == null) {
             throw new IllegalArgumentException("RegisterRequest cannot be null");
         }
 
-        Role roleDefault = null;
+        Role roleDefault;
         try {
             roleDefault = roleRepository.findByName("ROLE_USER")
                     .orElseThrow(() -> new RoleNotFoundException("ROLE_USER not found"));
@@ -132,8 +146,10 @@ public class UserService {
             throw new RuntimeException(e);
         }
 
+        // Al registrarse, inicialmente displayName podría ser el username o nulo
         return User.builder()
                 .username(userRequest.getUsername())
+                .displayName(userRequest.getUsername()) // Opcional: setear por defecto
                 .email(userRequest.getEmail())
                 .password(passwordEncoder.encode(userRequest.getPassword()))
                 .roles(Collections.singleton(roleDefault))
