@@ -5,13 +5,15 @@ import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-import java.sql.Timestamp; // Corregido para base de datos
+import java.sql.Timestamp; // CORREGIDO: usar java.sql.Timestamp
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Entity
 @Getter @Setter
@@ -24,7 +26,6 @@ public class User implements UserDetails {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Credenciales de acceso
     @Column(name = "username", unique = true, nullable = false)
     private String username;
 
@@ -32,25 +33,6 @@ public class User implements UserDetails {
     private String email;
 
     private String password;
-
-    // --- Nuevos campos para el Perfil (coinciden con Android UserProfile) ---
-
-    @Column(name = "display_name")
-    private String displayName; // El campo "Name" del formulario
-
-    @Column(name = "phone")
-    private String phone;
-
-    @Column(name = "weight")
-    private Double weight;
-
-    @Column(name = "height")
-    private Integer height;
-
-    @Column(name = "photo_url")
-    private String photoUrl; // Corresponde a photoUri
-
-    // -----------------------------------------------------------------------
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -61,24 +43,71 @@ public class User implements UserDetails {
 
     @CreatedDate
     @Column(updatable = false)
-    private Timestamp createdAt;
+    private Timestamp createdAt; // java.sql.Timestamp
 
     @LastModifiedDate
-    private Timestamp updatedAt;
+    private Timestamp updatedAt; // java.sql.Timestamp
 
     private boolean enabled = true;
     private boolean locked = false;
     private int failedLoginAttempts = 0;
 
-    @Override
-    public boolean isAccountNonLocked() { return !locked; }
+    // ========== NUEVOS CAMPOS PARA EL PERFIL ==========
+
+    @Column(name = "display_name")
+    private String displayName;
+
+    @Column(name = "phone")
+    private String phone;
+
+    @Column(name = "weight")
+    private Double weight;
+
+    @Column(name = "height")
+    private Integer height;
+
+    @Column(name = "photo_uri")
+    private String photoUri;
+
+    @Column(name = "date_of_birth")
+    private Timestamp dateOfBirth; // java.sql.Timestamp
+
+    @Column(name = "gender")
+    private String gender; // "male", "female", "other"
+
+    @Column(name = "fitness_goal")
+    private String fitnessGoal; // "weight_loss", "muscle_gain", "maintenance", "endurance"
+
+    @Column(name = "experience_level")
+    private String experienceLevel; // "beginner", "intermediate", "advanced"
+
+    @Column(name = "weekly_workouts")
+    private Integer weeklyWorkouts;
+
+    @Column(name = "workout_duration")
+    private Integer workoutDuration; // en minutos
+
+    @Column(name = "preferred_workout_times")
+    private String preferredWorkoutTimes; // "morning", "afternoon", "evening"
 
     @Override
-    public Collection<? extends GrantedAuthority> getAuthorities() { return List.of(); }
+    public boolean isAccountNonLocked() {
+        return !locked;
+    }
+
 
     @Override
-    public boolean isAccountNonExpired() { return true; }
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return List.of();
+    }
 
     @Override
-    public boolean isCredentialsNonExpired() { return true; }
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
 }

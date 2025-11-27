@@ -1,17 +1,14 @@
-// UserResponseDto.java
+// UserCreateDto.java
 package com.app.usuarios.Dto;
 
-import lombok.Builder;
 import lombok.Data;
 import java.sql.Timestamp;
-import java.util.Set;
 
 @Data
-@Builder
-public class UserResponseDto {
-    private Long id;
+public class UserCreateDto {
     private String username;
     private String email;
+    private String password;
     private String displayName;
     private String phone;
     private Double weight;
@@ -24,9 +21,4 @@ public class UserResponseDto {
     private Integer weeklyWorkouts;
     private Integer workoutDuration;
     private String preferredWorkoutTimes;
-    private Set<String> roles;
-    private boolean enabled;
-    private boolean locked;
-    private Timestamp createdAt;
-    private Timestamp updatedAt;
 }

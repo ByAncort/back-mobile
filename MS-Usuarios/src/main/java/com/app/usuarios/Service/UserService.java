@@ -1,160 +1,195 @@
 package com.app.usuarios.Service;
 
-import com.app.usuarios.Controller.UserAlreadyExistsException;
 import com.app.usuarios.Dto.*;
 import com.app.usuarios.Model.Role;
 import com.app.usuarios.Model.User;
 import com.app.usuarios.Repository.RoleRepository;
 import com.app.usuarios.Repository.UserRepository;
-import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
-import org.hibernate.service.spi.ServiceException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataAccessException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import javax.management.relation.RoleNotFoundException;
-import java.util.*;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
-    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
-    private final PasswordEncoder passwordEncoder;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public ServiceResult<List<UserResponseDto>> getAllUsers() {
-        try {
-            List<UserResponseDto> users = userRepository.findAll().stream()
-                    .map(this::toDto)
-                    .collect(Collectors.toList());
-
-            return new ServiceResult<>(users);
-        } catch (Exception e) {
-            return new ServiceResult<>(List.of("Error retrieving users: " + e.getMessage()));
+    // CREATE - Crear usuario
+    @Transactional
+    public User create(UserCreateDto userDto) {
+        // Validar que no exista usuario con mismo username o email
+        if (userRepository.existsByUsername(userDto.getUsername())) {
+            throw new RuntimeException("Username already exists: " + userDto.getUsername());
         }
-    }
-
-    public ServiceResult<UserResponseDto> updateUser(Long id, UserDto userDto) {
-        try {
-            User user = userRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("User not found with ID: " + id));
-
-            // Actualizar campos básicos de autenticación (si se permite)
-            if(userDto.getUsername() != null) user.setUsername(userDto.getUsername());
-            if(userDto.getEmail() != null) user.setEmail(userDto.getEmail());
-
-            // --- Actualizar campos del Perfil (Android) ---
-            user.setDisplayName(userDto.getDisplayName());
-            user.setPhone(userDto.getPhone());
-            user.setWeight(userDto.getWeight());
-            user.setHeight(userDto.getHeight());
-            user.setPhotoUrl(userDto.getPhotoUrl());
-            // ----------------------------------------------
-
-            // Actualizar Roles si vienen en la petición
-            if (userDto.getRoles() != null && !userDto.getRoles().isEmpty()) {
-                Set<Role> roles = userDto.getRoles().stream()
-                        .map(name -> roleRepository.findByName(name)
-                                .orElseThrow(() -> new RuntimeException("Role not found: " + name)))
-                        .collect(Collectors.toSet());
-                user.setRoles(roles);
-            }
-
-            User updated = userRepository.save(user);
-            return new ServiceResult<>(toDto(updated));
-        } catch (Exception e) {
-            return new ServiceResult<>(List.of("Error updating user: " + e.getMessage()));
+        if (userRepository.existsByEmail(userDto.getEmail())) {
+            throw new RuntimeException("Email already exists: " + userDto.getEmail());
         }
-    }
 
-    public ServiceResult<String> deleteUser(Long id) {
-        try {
-            if (!userRepository.existsById(id)) {
-                return new ServiceResult<>(List.of("User not found with ID: " + id));
-            }
-            userRepository.deleteById(id);
-            return new ServiceResult<>("User deleted successfully.");
-        } catch (Exception e) {
-            return new ServiceResult<>(List.of("Error deleting user: " + e.getMessage()));
-        }
-    }
+        // Obtener rol por defecto
+        Role userRole = roleRepository.findByName("ROLE_USER")
+                .orElseThrow(() -> new RuntimeException("Default role ROLE_USER not found"));
 
-    // Convertir Entidad a DTO de respuesta
-    public UserResponseDto toDto(User user) {
-        return UserResponseDto.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .displayName(user.getDisplayName()) // Mapear display name
-                .email(user.getEmail())
-                .phone(user.getPhone())            // Mapear teléfono
-                .weight(user.getWeight())          // Mapear peso
-                .height(user.getHeight())          // Mapear altura
-                .photoUrl(user.getPhotoUrl())      // Mapear foto
-                .roles(user.getRoles().stream().map(Role::getName).collect(Collectors.toSet()))
+        // Construir usuario
+        User user = User.builder()
+                .username(userDto.getUsername())
+                .email(userDto.getEmail())
+                .password(passwordEncoder.encode(userDto.getPassword()))
+                .displayName(userDto.getDisplayName())
+                .phone(userDto.getPhone())
+                .weight(userDto.getWeight())
+                .height(userDto.getHeight())
+                .photoUri(userDto.getPhotoUri())
+                .dateOfBirth(userDto.getDateOfBirth())
+                .gender(userDto.getGender())
+                .fitnessGoal(userDto.getFitnessGoal())
+                .experienceLevel(userDto.getExperienceLevel())
+                .weeklyWorkouts(userDto.getWeeklyWorkouts())
+                .workoutDuration(userDto.getWorkoutDuration())
+                .preferredWorkoutTimes(userDto.getPreferredWorkoutTimes())
+                .roles(Collections.singleton(userRole))
+                .createdAt(Timestamp.from(Instant.now()))
+                .enabled(true)
+                .locked(false)
+                .failedLoginAttempts(0)
                 .build();
-    }
 
-    public User createUser(RegisterRequest request) {
-        Objects.requireNonNull(request, "RegisterRequest cannot be null");
-        validateUserDoesNotExist(request.getUsername(), request.getEmail());
-        try {
-            return registerAndSaveUser(request);
-        } catch (JwtException e) {
-            logger.error("JWT generation failed for user: {}", request.getUsername(), e);
-            throw new ServiceException("Registration failed: could not generate access token", e);
-        } catch (DataAccessException e) {
-            logger.error("Database error during user registration for: {}", request.getUsername(), e);
-            throw new ServiceException("Registration failed: database error", e);
-        } catch (ServiceException e) {
-            throw e;
-        } catch (Exception e) {
-            logger.error("Unexpected error during user registration", e);
-            throw new ServiceException("Registration failed due to unexpected error", e);
-        }
-    }
-
-    private void validateUserDoesNotExist(String username, String email) {
-        if (userRepository.existsByUsername(username)) {
-            throw new UserAlreadyExistsException("Username already exists: " + username);
-        }
-        if (userRepository.existsByEmail(email)) {
-            throw new UserAlreadyExistsException("Email already exists: " + email);
-        }
-    }
-
-    private User registerAndSaveUser(RegisterRequest request) {
-        User user = registerUser(request);
         return userRepository.save(user);
     }
 
-    public User registerUser(RegisterRequest userRequest) {
-        if (userRequest == null) {
-            throw new IllegalArgumentException("RegisterRequest cannot be null");
-        }
+    // READ - Obtener todos los usuarios
+    public List<UserResponseDto> findAll() {
+        return userRepository.findAll()
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
 
-        Role roleDefault;
-        try {
-            roleDefault = roleRepository.findByName("ROLE_USER")
-                    .orElseThrow(() -> new RoleNotFoundException("ROLE_USER not found"));
-        } catch (RoleNotFoundException e) {
-            throw new RuntimeException(e);
-        }
+    // READ - Obtener usuario por ID
+    public UserResponseDto findById(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+        return toDto(user);
+    }
 
-        // Al registrarse, inicialmente displayName podría ser el username o nulo
-        return User.builder()
-                .username(userRequest.getUsername())
-                .displayName(userRequest.getUsername()) // Opcional: setear por defecto
-                .email(userRequest.getEmail())
-                .password(passwordEncoder.encode(userRequest.getPassword()))
-                .roles(Collections.singleton(roleDefault))
-                .locked(false)
-                .enabled(true)
+    // READ - Obtener usuario por username
+    public UserResponseDto findByUsername(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found with username: " + username));
+        return toDto(user);
+    }
+
+    // READ - Obtener usuario por email
+    public UserResponseDto findByEmail(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+        return toDto(user);
+    }
+
+    // UPDATE - Actualizar usuario
+    @Transactional
+    public UserResponseDto update(Long id, UserUpdateDto userDto) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+
+        // Actualizar campos básicos
+        Optional.ofNullable(userDto.getUsername()).ifPresent(user::setUsername);
+        Optional.ofNullable(userDto.getEmail()).ifPresent(user::setEmail);
+
+        // Actualizar campos del perfil
+        Optional.ofNullable(userDto.getDisplayName()).ifPresent(user::setDisplayName);
+        Optional.ofNullable(userDto.getPhone()).ifPresent(user::setPhone);
+        Optional.ofNullable(userDto.getWeight()).ifPresent(user::setWeight);
+        Optional.ofNullable(userDto.getHeight()).ifPresent(user::setHeight);
+        Optional.ofNullable(userDto.getPhotoUri()).ifPresent(user::setPhotoUri);
+        Optional.ofNullable(userDto.getDateOfBirth()).ifPresent(user::setDateOfBirth);
+        Optional.ofNullable(userDto.getGender()).ifPresent(user::setGender);
+        Optional.ofNullable(userDto.getFitnessGoal()).ifPresent(user::setFitnessGoal);
+        Optional.ofNullable(userDto.getExperienceLevel()).ifPresent(user::setExperienceLevel);
+        Optional.ofNullable(userDto.getWeeklyWorkouts()).ifPresent(user::setWeeklyWorkouts);
+        Optional.ofNullable(userDto.getWorkoutDuration()).ifPresent(user::setWorkoutDuration);
+        Optional.ofNullable(userDto.getPreferredWorkoutTimes()).ifPresent(user::setPreferredWorkoutTimes);
+
+        // Actualizar timestamp
+        user.setUpdatedAt(Timestamp.from(Instant.now()));
+
+        User updatedUser = userRepository.save(user);
+        return toDto(updatedUser);
+    }
+
+    // UPDATE - Actualizar campos específicos del perfil
+    @Transactional
+    public UserResponseDto updateProfile(Long id, UserProfileUpdateDto profileDto) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+
+        // Actualizar solo campos del perfil
+        Optional.ofNullable(profileDto.getDisplayName()).ifPresent(user::setDisplayName);
+        Optional.ofNullable(profileDto.getPhone()).ifPresent(user::setPhone);
+        Optional.ofNullable(profileDto.getWeight()).ifPresent(user::setWeight);
+        Optional.ofNullable(profileDto.getHeight()).ifPresent(user::setHeight);
+        Optional.ofNullable(profileDto.getPhotoUri()).ifPresent(user::setPhotoUri);
+        Optional.ofNullable(profileDto.getDateOfBirth()).ifPresent(user::setDateOfBirth);
+        Optional.ofNullable(profileDto.getGender()).ifPresent(user::setGender);
+        Optional.ofNullable(profileDto.getFitnessGoal()).ifPresent(user::setFitnessGoal);
+        Optional.ofNullable(profileDto.getExperienceLevel()).ifPresent(user::setExperienceLevel);
+        Optional.ofNullable(profileDto.getWeeklyWorkouts()).ifPresent(user::setWeeklyWorkouts);
+        Optional.ofNullable(profileDto.getWorkoutDuration()).ifPresent(user::setWorkoutDuration);
+        Optional.ofNullable(profileDto.getPreferredWorkoutTimes()).ifPresent(user::setPreferredWorkoutTimes);
+
+        user.setUpdatedAt(Timestamp.from(Instant.now()));
+
+        User updatedUser = userRepository.save(user);
+        return toDto(updatedUser);
+    }
+
+    // DELETE - Eliminar usuario
+    @Transactional
+    public void delete(Long id) {
+        if (!userRepository.existsById(id)) {
+            throw new RuntimeException("User not found with id: " + id);
+        }
+        userRepository.deleteById(id);
+    }
+
+    // Método auxiliar para convertir Entity a DTO
+    private UserResponseDto toDto(User user) {
+        Set<String> roleNames = user.getRoles().stream()
+                .map(Role::getName)
+                .collect(Collectors.toSet());
+
+        return UserResponseDto.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .displayName(user.getDisplayName())
+                .phone(user.getPhone())
+                .weight(user.getWeight())
+                .height(user.getHeight())
+                .photoUri(user.getPhotoUri())
+                .dateOfBirth(user.getDateOfBirth())
+                .gender(user.getGender())
+                .fitnessGoal(user.getFitnessGoal())
+                .experienceLevel(user.getExperienceLevel())
+                .weeklyWorkouts(user.getWeeklyWorkouts())
+                .workoutDuration(user.getWorkoutDuration())
+                .preferredWorkoutTimes(user.getPreferredWorkoutTimes())
+                .roles(roleNames)
+                .enabled(user.isEnabled())
+                .locked(user.isLocked())
+                .createdAt(user.getCreatedAt())
+                .updatedAt(user.getUpdatedAt())
                 .build();
     }
 }

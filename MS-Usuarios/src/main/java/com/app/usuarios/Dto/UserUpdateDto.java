@@ -1,15 +1,11 @@
-// UserResponseDto.java
+// UserUpdateDto.java
 package com.app.usuarios.Dto;
 
-import lombok.Builder;
 import lombok.Data;
 import java.sql.Timestamp;
-import java.util.Set;
 
 @Data
-@Builder
-public class UserResponseDto {
-    private Long id;
+public class UserUpdateDto {
     private String username;
     private String email;
     private String displayName;
@@ -24,9 +20,4 @@ public class UserResponseDto {
     private Integer weeklyWorkouts;
     private Integer workoutDuration;
     private String preferredWorkoutTimes;
-    private Set<String> roles;
-    private boolean enabled;
-    private boolean locked;
-    private Timestamp createdAt;
-    private Timestamp updatedAt;
 }

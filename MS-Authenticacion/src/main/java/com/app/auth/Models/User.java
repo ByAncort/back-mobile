@@ -18,17 +18,20 @@ import java.util.stream.Collectors;
 @Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder@Table(name = "users")
+@Builder
+@Table(name = "users")
 public class User implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @Column(name = "username" ,unique=true,nullable = false)
-    private String username;
-    @Column(name = "email" ,unique=true,nullable = false)
-    private String email;
-    private String password;
 
+    @Column(name = "username", unique = true, nullable = false)
+    private String username;
+
+    @Column(name = "email", unique = true, nullable = false)
+    private String email;
+
+    private String password;
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -36,6 +39,56 @@ public class User implements UserDetails {
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles = new HashSet<>();
+
+    @CreatedDate
+    @Column(updatable = false)
+    private Timestamp createdAt;
+
+    @LastModifiedDate
+    private Timestamp updatedAt;
+
+    private boolean enabled = true;
+    private boolean locked = false;
+    private int failedLoginAttempts = 0;
+
+    // ========== NUEVOS CAMPOS PARA EL PERFIL ==========
+
+    @Column(name = "display_name")
+    private String displayName;
+
+    @Column(name = "phone")
+    private String phone;
+
+    @Column(name = "weight")
+    private Double weight;
+
+    @Column(name = "height")
+    private Integer height;
+
+    @Column(name = "photo_uri")
+    private String photoUri;
+
+    @Column(name = "date_of_birth")
+    private Timestamp dateOfBirth;
+
+    @Column(name = "gender")
+    private String gender; // "male", "female", "other"
+
+    @Column(name = "fitness_goal")
+    private String fitnessGoal; // "weight_loss", "muscle_gain", "maintenance", "endurance"
+
+    @Column(name = "experience_level")
+    private String experienceLevel; // "beginner", "intermediate", "advanced"
+
+    @Column(name = "weekly_workouts")
+    private Integer weeklyWorkouts;
+
+    @Column(name = "workout_duration")
+    private Integer workoutDuration; // en minutos
+
+    @Column(name = "preferred_workout_times")
+    private String preferredWorkoutTimes; // "morning", "afternoon", "evening"
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return roles.stream()
@@ -43,26 +96,16 @@ public class User implements UserDetails {
                 .map(permission -> new SimpleGrantedAuthority(permission.getName()))
                 .collect(Collectors.toList());
     }
-    @CreatedDate
-    @Column(updatable = false)
-    private Timestamp createdAt;
-
-    @LastModifiedDate
-    private Timestamp updatedAt;
-    private boolean enabled = true;
-    private boolean locked = false;
-    private int failedLoginAttempts = 0;
-
 
     @Override
     public boolean isAccountNonLocked() {
         return !locked;
     }
+
     @Override
     public boolean isAccountNonExpired() {
         return true;
     }
-
 
     @Override
     public boolean isCredentialsNonExpired() {
